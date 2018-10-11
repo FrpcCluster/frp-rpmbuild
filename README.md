@@ -6,13 +6,15 @@
 
 ## 安装打包工具
 ```
-yum install rpmdevtools
-rpmdev-setuptree
+yum install rpmdevtools    #安装命令
+rpmdev-setuptree           #生成默认项目目录架构
 ```
 ## 克隆打包库
 ```
 git clone https://github.com/TelDragon/Frp-rpmbuild.git
-
+#从github上克隆项目。
+rm -rf rpmbuild/* && cp -R Frp-rpmbuild/* rpmbuild
+#删除默认项目内的所有文件，复制或移动 新的项目内的文件到 rpmbuild 内。
 ```
 
 ## 文件架构说明
