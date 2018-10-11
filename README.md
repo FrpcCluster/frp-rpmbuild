@@ -115,18 +115,18 @@ rpmbuild/
 
 ## 打包命令
 ```
-rpmbuild -bb xxxx.spec
-rpmbuild -bb --target=i386 xxxx.spec
+rpmbuild -bb xxxx.spec                  #如果你的机器是x86_64 环境的默认生成的也是。
+rpmbuild -bb --target=i386 xxxx.spec    #加参数更改为i386的。
 
 ```
 
 ## 测试安装与卸载命令
 
 ```
-rpm -ivh xxx.rpm     #安装
-rpm -ivh --force xxx.rpm  #强制安装
+rpm -ivh xxx.rpm             #安装
+rpm -ivh --force xxx.rpm     #强制安装
 
-rpm -qa |grep xxx    #查询安装包
-rpm -e xxx.rpm       #卸载安装包
+rpm -qa |grep xxx            #查询安装包
+rpm -e xxx.rpm               #卸载安装包
 ```
 
