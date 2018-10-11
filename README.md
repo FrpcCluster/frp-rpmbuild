@@ -1,21 +1,21 @@
+
+## 说明
+
+* 如环境再Centos6 下则打包出来的文件是Centos6的同时要使用Centos6 的配置文件
+* 如环境再Centos7 下则打包出来的文件是Centos7的同时要使用Centos7 的配置文件
+
 ## 安装打包工具
 ```
 yum install rpmdevtools
 rpmdev-setuptree
 ```
-
-## 打包命令
+## 克隆打包库
 ```
-rpmbuild -bb xxxx.spec
-rpmbuild -bb --target=i386 xxxx.spec
+git clone https://github.com/TelDragon/Frp-rpmbuild.git
 
-rpm -ivh xxx.rpm
-rpm -e xxx.rpm
-rpm -qa |grep xxx
-rpm -ivh --force xxx.rpm
 ```
 
-## 文件
+## 文件架构说明
 
 ```
  tree rpmbuild
@@ -111,5 +111,19 @@ rpmbuild/
 
 ```
 
-i
+## 打包命令
+```
+rpmbuild -bb xxxx.spec
+rpmbuild -bb --target=i386 xxxx.spec
+
+```
+
+## 测试安装与卸载命令
+
+```
+rpm -ivh xxx.rpm     #安装
+rpm -ivh --force xxx.rpm  #强制安装
+rpm -e xxx.rpm       #查询
+rpm -qa |grep xxx    #查询
+```
 
