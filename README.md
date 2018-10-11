@@ -125,7 +125,8 @@ rpmbuild -bb --target=i386 xxxx.spec
 ```
 rpm -ivh xxx.rpm     #安装
 rpm -ivh --force xxx.rpm  #强制安装
-rpm -e xxx.rpm       #查询
-rpm -qa |grep xxx    #查询
+
+rpm -qa |grep xxx    #查询安装包
+rpm -e xxx.rpm       #卸载安装包
 ```
 
