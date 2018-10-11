@@ -1,0 +1,77 @@
+#!/bin/bash
+# /etc/rc.d/init.d/frps
+# init script for frps precesses
+# it is v0.21.0 version
+# processname: frps
+# chkconfig: 2345 80 90
+# description: Frps-Server Daemon
+PID_FILE=/tmp/frps.pid
+CONFIG_FILE=/usr/local/frps/etc/frps.ini
+Frps_Server=/usr/local/frps/bin/frps
+start()
+{
+    if [ ! -f $PID_FILE ]; then
+        echo -n $"Starting Frps Server..."
+        nohup $Frps_Server -c $CONFIG_FILE < /dev/null > /dev/null 2> /dev/null &
+        echo $! > $PID_FILE
+        echo ""
+    else
+        PID=$(cat $PID_FILE)
+        if [ ! -f /proc/$PID/cmdline ]; then
+
+            echo -n $"Starting Frps Server..."
+            nohup $Frps_Server -c $CONFIG_FILE < /dev/null > /dev/null 2> /dev/null &
+            echo $! > $PID_FILE
+            echo ""
+        else
+            echo "Frps Server is already running..."
+        fi
+    fi;
+}
+stop()
+{
+    if [[ -f $PID_FILE ]]; then
+        echo -n $"Shutting down Frps Server..."
+        kill -9 $(cat $PID_FILE)
+        rm -f $PID_FILE
+        echo ""
+    else
+        echo "Frps Server is not running..."
+    fi;
+}
+status()
+{
+    if [ -f $PID_FILE ]; then
+        PID=$(cat $PID_FILE)
+        if [ -f /proc/$PID/cmdline ]; then
+            echo "Frps Server is running..."
+        else
+            echo "Frps Server is not running..."
+            rm -f $PID_FILE
+        fi
+    else
+        echo "Frps Server is not running..."
+    fi;
+}
+[ -f $Frps_Server ] || exit 1
+# See how we were called.
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    status)
+        status
+        ;;
+    restart)
+        stop
+        sleep 3
+        start
+        ;;
+    *)
+    echo $"Usage: $0 {start|stop|status|restart}"
+    exit 1
+esac
+exit 0

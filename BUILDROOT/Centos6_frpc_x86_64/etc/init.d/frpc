@@ -1,0 +1,77 @@
+#!/bin/bash
+# /etc/rc.d/init.d/frpc
+# init script for frpc precesses
+# it is v0.21.0 version
+# processname: frpc
+# chkconfig: 2345 80 90
+# description: Frpc-Client Daemon
+PID_FILE=/tmp/frpc.pid
+CONFIG_FILE=/usr/local/frpc/etc/frpc.ini
+Frpc_Client=/usr/local/frpc/bin/frpc
+start()
+{
+    if [ ! -f $PID_FILE ]; then
+        echo -n $"Starting Frpc Client..."
+        nohup $Frpc_Client -c $CONFIG_FILE < /dev/null > /dev/null 2> /dev/null &
+        echo $! > $PID_FILE
+        echo ""
+    else
+        PID=$(cat $PID_FILE)
+        if [ ! -f /proc/$PID/cmdline ]; then
+
+            echo -n $"Starting Frpc Client..."
+            nohup $Frpc_Client -c $CONFIG_FILE < /dev/null > /dev/null 2> /dev/null &
+            echo $! > $PID_FILE
+            echo ""
+        else
+            echo "Frpc Client is already running..."
+        fi
+    fi;
+}
+stop()
+{
+    if [[ -f $PID_FILE ]]; then
+        echo -n $"Shutting down Frpc Client..."
+        kill -9 $(cat $PID_FILE)
+        rm -f $PID_FILE
+        echo ""
+    else
+        echo "Frpc Client is not running..."
+    fi;
+}
+status()
+{
+    if [ -f $PID_FILE ]; then
+        PID=$(cat $PID_FILE)
+        if [ -f /proc/$PID/cmdline ]; then
+            echo "Frpc Client is running..."
+        else
+            echo "Frpc Client is not running..."
+            rm -f $PID_FILE
+        fi
+    else
+        echo "Frpc Client is not running..."
+    fi;
+}
+[ -f $Frpc_Client ] || exit 1
+# See how we were called.
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    status)
+        status
+        ;;
+    restart)
+        stop
+        sleep 3
+        start
+        ;;
+    *)
+    echo $"Usage: $0 {start|stop|status|restart}"
+    exit 1
+esac
+exit 0

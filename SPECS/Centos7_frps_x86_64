@@ -1,0 +1,485 @@
+Name:		frps
+Version:	0.21.0
+Release:	1%{?dist}
+Summary:	Fast reverse proxy
+
+Group:		Applications/System
+License:	GPLv2
+URL:		https://github.com/fatedier/frp
+Packager:       YUANYL
+# Source0:	https://github.com/fatedier/frp/releases/download/v0.21.0/frp_0.21.0_linux_amd64.tar.gz
+# BuildRoot:      %_topdir/BUILDROOT
+Prefix:         /usr/local/frps
+
+%description
+A fast reverse proxy to help you expose a local server behind a NAT or firewall to the internet.
+
+%prep
+# %setup -q
+
+%install
+# mkdir -p $RPM_BUILD_ROOT
+# rm -rf %{buildroot}
+cp -r %_buildrootdir/Centos7_frps_x86_64/usr %{buildroot} 
+
+%post
+
+program_name="frps"
+str_program_dir="/usr/local/${program_name}"
+program_config_file="etc/frps.ini"
+
+fun_set_text_color(){
+    COLOR_RED='\E[1;31m'
+    COLOR_GREEN='\E[1;32m'
+    COLOR_YELOW='\E[1;33m'
+    COLOR_BLUE='\E[1;34m'
+    COLOR_PINK='\E[1;35m'
+    COLOR_PINKBACK_WHITEFONT='\033[45;37m'
+    COLOR_GREEN_LIGHTNING='\033[32m \033[05m'
+    COLOR_END='\E[0m'
+}
+
+# Disable selinux
+disable_selinux(){
+    if [ -s /etc/selinux/config ] && grep 'SELINUX=enforcing' /etc/selinux/config; then
+        sed -i 's/SELINUX=enforcing/SELINUX=disabled/g' /etc/selinux/config
+        setenforce 0
+    fi
+}
+
+# Random password
+fun_randstr(){
+    strNum=$1
+    [ -z "${strNum}" ] && strNum="16"
+    strRandomPass=""
+    strRandomPass=`tr -cd '[:alnum:]' < /dev/urandom | fold -w ${strNum} | head -n1`
+    echo ${strRandomPass}
+}
+
+function __readINI() {
+ INIFILE=$1; SECTION=$2; ITEM=$3
+ _readIni=`awk -F '=' '/\['$SECTION'\]/{a=1}a==1&&$1~/'$ITEM'/{print $2;exit}' $INIFILE`
+echo ${_readIni}
+}
+# Check port
+fun_check_port(){
+    port_flag=""
+    strCheckPort=""
+    input_port=""
+    port_flag="$1"
+    strCheckPort="$2"
+    if [ ${strCheckPort} -ge 1 ] && [ ${strCheckPort} -le 65535 ]; then
+        checkServerPort=`netstat -ntulp | grep "\b:${strCheckPort}\b"`
+        if [ -n "${checkServerPort}" ]; then
+            echo ""
+            echo -e "${COLOR_RED}Error:${COLOR_END} Port ${COLOR_GREEN}${strCheckPort}${COLOR_END} is ${COLOR_PINK}used${COLOR_END},view relevant port:"
+            netstat -ntulp | grep "\b:${strCheckPort}\b"
+            fun_input_${port_flag}_port
+        else
+            input_port="${strCheckPort}"
+        fi
+    else
+        echo "Input error! Please input correct numbers."
+        fun_input_${port_flag}_port
+    fi
+}
+fun_check_number(){
+    num_flag=""
+    strMaxNum=""
+    strCheckNum=""
+    input_number=""
+    num_flag="$1"
+    strMaxNum="$2"
+    strCheckNum="$3"
+    if [ ${strCheckNum} -ge 1 ] && [ ${strCheckNum} -le ${strMaxNum} ]; then
+        input_number="${strCheckNum}"
+    else
+        echo "Input error! Please input correct numbers."
+        fun_input_${num_flag}
+    fi
+}
+# input port
+fun_input_bind_port(){
+    def_server_port="7000"
+    echo ""
+    echo "A literal address or host name for IPv6 must be enclosed"
+    echo "in square brackets, as in "[::1]:80", "[ipv6-host]:http" or "[ipv6-host%zone]:80""
+    echo -n -e "Please input ${program_name} ${COLOR_GREEN}bind_port${COLOR_END} ${COLOR_RED}[1-65535]${COLOR_END}"
+    read -p "(Default Server Port: ${def_server_port}):" serverport
+    [ -z "${serverport}" ] && serverport="${def_server_port}"
+    fun_check_port "bind" "${serverport}"
+}
+
+fun_input_bind_udp_port(){
+    def_server_udp_port="7001"
+    echo "udp port to help make udp hole to penetrate nat"
+    echo -n -e "Please input ${program_name} ${COLOR_GREEN}bind_udp_port${COLOR_END} ${COLOR_RED}[1-65535]${COLOR_END}"
+    read -p "(Default Server Port: ${def_server_udp_port}):" server_udp_port
+    [ -z "${server_udp_port}" ] && server_udp_port="${def_server_udp_port}"
+    fun_check_port "bind_udp" "${server_udp_port}"
+}
+
+fun_input_kcp_bind_port(){
+    def_server_kcp_port="7000"
+    echo "udp port used for kcp protocol, it can be same with 'bind_port'"
+    echo "if not set, kcp is disabled in frps"
+    echo -n -e "Please input ${program_name} ${COLOR_GREEN}kcp_bind_port${COLOR_END} ${COLOR_RED}[1-65535]${COLOR_END}"
+    read -p "(Default Server Port: ${def_server_kcp_port}):" server_kcp_port
+    [ -z "${server_kcp_port}" ] && server_kcp_port="${def_server_kcp_port}"
+    fun_check_port "bind_kcp" "${server_kcp_port}"
+}
+
+fun_input_dashboard_port(){
+    def_dashboard_port="7500"
+    echo "set dashboard_addr and dashboard_port to view dashboard of frps"
+    echo "dashboard_addr's default value is same with bind_addr"
+    echo "dashboard is available only if dashboard_port is set"
+    echo -n -e "Please input ${program_name} ${COLOR_GREEN}dashboard_port${COLOR_END} ${COLOR_RED}[1-65535]${COLOR_END}"
+    read -p "(Default dashboard_port: ${def_dashboard_port}):" input_dashboard_port
+    [ -z "${input_dashboard_port}" ] && input_dashboard_port="${def_dashboard_port}"
+    fun_check_port "dashboard" "${input_dashboard_port}"
+}
+
+fun_input_vhost_http_port(){
+    def_vhost_http_port="80"
+    echo "if you want to support virtual host, you must set the http port for listening (optional)"
+    echo "Note: http port and https port can be same with bind_port"
+    echo -n -e "Please input ${program_name} ${COLOR_GREEN}vhost_http_port${COLOR_END} ${COLOR_RED}[1-65535]${COLOR_END}"
+    read -p "(Default vhost_http_port: ${def_vhost_http_port}):" input_vhost_http_port
+    [ -z "${input_vhost_http_port}" ] && input_vhost_http_port="${def_vhost_http_port}"
+    fun_check_port "vhost_http" "${input_vhost_http_port}"
+}
+fun_input_vhost_https_port(){
+    def_vhost_https_port="443"
+    echo -n -e "Please input ${program_name} ${COLOR_GREEN}vhost_https_port${COLOR_END} ${COLOR_RED}[1-65535]${COLOR_END}"
+    read -p "(Default vhost_https_port: ${def_vhost_https_port}):" input_vhost_https_port
+    [ -z "${input_vhost_https_port}" ] && input_vhost_https_port="${def_vhost_https_port}"
+    fun_check_port "vhost_https" "${input_vhost_https_port}"
+}
+fun_input_log_max_days(){
+    def_max_days="30"
+    def_log_max_days="3"
+    echo -e "Please input ${program_name} ${COLOR_GREEN}log_max_days${COLOR_END} [1-${def_max_days}]"
+    read -p "(Default log_max_days: ${def_log_max_days} day):" input_log_max_days
+    [ -z "${input_log_max_days}" ] && input_log_max_days="${def_log_max_days}"
+    fun_check_number "log_max_days" "${def_max_days}" "${input_log_max_days}"
+}
+fun_input_max_pool_count(){
+    def_max_pool="200"
+    def_max_pool_count="5"
+    echo "pool_count in each proxy will change to max_pool_count if they exceed the maximum value"
+    echo -e "Please input ${program_name} ${COLOR_GREEN}max_pool_count${COLOR_END} ${COLOR_RED}[1-${def_max_pool}]${COLOR_END}"
+    read -p "(Default max_pool_count: ${def_max_pool_count}):" input_max_pool_count
+    [ -z "${input_max_pool_count}" ] && input_max_pool_count="${def_max_pool_count}"
+    fun_check_number "max_pool_count" "${def_max_pool}" "${input_max_pool_count}"
+}
+        fun_set_text_color
+        echo -e "Loading You Server IP, please wait..."
+        defIP=$(wget -qO- ip.clang.cn | sed -r 's/\r//')
+        echo -e "You Server IP:${COLOR_GREEN}${defIP}${COLOR_END}"
+        echo -e  "${COLOR_YELOW}Please input your server setting:${COLOR_END}"
+        fun_input_bind_port
+        [ -n "${input_port}" ] && set_bind_port="${input_port}"
+        echo "${program_name} bind_port: ${set_bind_port}"
+        echo ""
+        fun_input_bind_udp_port
+        [ -n "${input_port}" ] && set_bind_udp_port="${input_port}"
+        echo "${program_name} bind_port: ${set_bind_udp_port}"
+        echo ""
+        fun_input_kcp_bind_port
+        [ -n "${input_port}" ] && set_kcp_bind_port="${input_port}"
+        echo "${program_name} bind_port: ${set_kcp_bind_port}"
+        echo ""
+        fun_input_vhost_http_port
+        [ -n "${input_port}" ] && set_vhost_http_port="${input_port}"
+        echo "${program_name} vhost_http_port: ${set_vhost_http_port}"
+        fun_input_vhost_https_port
+        [ -n "${input_port}" ] && set_vhost_https_port="${input_port}"
+        echo "${program_name} vhost_https_port: ${set_vhost_https_port}"
+        echo ""
+        fun_input_dashboard_port
+        [ -n "${input_port}" ] && set_dashboard_port="${input_port}"
+        echo "${program_name} dashboard_port: ${set_dashboard_port}"
+        echo ""
+        def_dashboard_user="admin"
+        echo "dashboard user and passwd for basic auth protect, if not set, both default value is admin"
+        read -p "Please input dashboard_user (Default: ${def_dashboard_user}):" set_dashboard_user
+        [ -z "${set_dashboard_user}" ] && set_dashboard_user="${def_dashboard_user}"
+        echo "${program_name} dashboard_user: ${set_dashboard_user}"
+        def_dashboard_pwd=`fun_randstr 8`
+        echo "The default is 8 for random characters"
+        read -p "Please input dashboard_pwd (Default: ${def_dashboard_pwd}):" set_dashboard_pwd
+        [ -z "${set_dashboard_pwd}" ] && set_dashboard_pwd="${def_dashboard_pwd}"
+        echo "${program_name} dashboard_pwd: ${set_dashboard_pwd}"
+        echo ""
+        echo "##### Please select log_file #####"
+        echo "1: enable (default)"
+        echo "2: disable"
+        echo "#####################################################"
+        read -p "Enter your choice (1, 2 or exit. default [1]): " str_log_file
+        case "${str_log_file}" in
+            1|[yY]|[yY][eE][sS]|[oO][nN]|[tT][rR][uU][eE]|[eE][nN][aA][bB][lL][eE])
+                str_log_file="/usr/local/frps/log/frps.log"
+                str_log_file_flag="enable"
+                ;;
+            0|2|[nN]|[nN][oO]|[oO][fF][fF]|[fF][aA][lL][sS][eE]|[dD][iI][sS][aA][bB][lL][eE])
+                str_log_file="/dev/null"
+                str_log_file_flag="disable"
+                ;;
+            [eE][xX][iI][tT])
+                exit 1
+                ;;
+            *)
+                str_log_file="/usr/local/frps/log/frps.log"
+                str_log_file_flag="enable"
+                ;;
+        esac
+        echo "log_file: ${str_log_file_flag}"
+        echo "${str_log_file}"
+        echo ""
+        echo "##### Please select log_level #####"
+        echo "1: info (default)"
+        echo "2: warn"
+        echo "3: error"
+        echo "4: debug"
+        echo "#####################################################"
+        read -p "Enter your choice (1, 2, 3, 4 or exit. default [1]): " str_log_level
+        case "${str_log_level}" in
+            1|[Ii][Nn][Ff][Oo])
+                str_log_level="info"
+                ;;
+            2|[Ww][Aa][Rr][Nn])
+                str_log_level="warn"
+                ;;
+            3|[Ee][Rr][Rr][Oo][Rr])
+                str_log_level="error"
+                ;;
+            4|[Dd][Ee][Bb][Uu][Gg])
+                str_log_level="debug"
+                ;;
+            [eE][xX][iI][tT])
+                exit 1
+                ;;
+            *)
+                str_log_level="info"
+                ;;
+        esac
+        echo "log_level: ${str_log_level}"
+        echo ""
+        fun_input_log_max_days
+        [ -n "${input_number}" ] && set_log_max_days="${input_number}"
+        echo "${program_name} log_max_days: ${set_log_max_days}"
+        echo ""
+        default_token=`fun_randstr 16`
+        echo "The default is 16 for random characters"
+        read -p "Please input token (Default: ${default_token}):" set_token
+        [ -z "${set_token}" ] && set_token="${default_token}"
+        echo "${program_name} token: ${set_token}"
+        echo ""
+        def_allow_ports="2000-3000,3001,3003,4000-50000"
+        echo "only allow frpc to bind ports you list, if you set nothing, there won't be any limit"
+        read -p "Please input allow_ports (Default: ${def_allow_ports}):" set_allow_ports
+        [ -z "${set_allow_ports}" ] && set_allow_ports="${def_allow_ports}"
+        echo "${program_name} allow_ports: ${set_allow_ports}"
+        echo ""
+        fun_input_max_pool_count
+        [ -n "${input_number}" ] && set_max_pool_count="${input_number}"
+        echo "${program_name} max_pool_count: ${set_max_pool_count}"
+        echo ""
+        def_max_ports_per_client="0"
+        echo "max ports can be used for each client, default value is 0 means no limit"
+        read -p "Please input max_ports_per_client (Default: ${def_max_ports_per_client}):" set_max_ports_per_client
+        [ -z "${set_max_ports_per_client}" ] && set_max_ports_per_client="${def_max_ports_per_client}"
+        echo "${program_name} max_ports_per_client: ${set_max_ports_per_client}"
+        echo ""
+        def_authentication_timeout="900"
+        echo "authentication_timeout means the timeout interval (seconds) when the frpc connects frps"
+        echo "if authentication_timeout is zero, the time is not verified, default is 900s"
+        read -p "Please input authentication_timeout (Default: ${def_authentication_timeout}):" set_authentication_timeout
+        [ -z "${set_authentication_timeout}" ] && set_authentication_timeout="${def_authentication_timeout}"
+        echo "${program_name} authentication_timeout: ${set_authentication_timeout}"
+        echo ""
+        def_subdomain_host="frps.com"
+        echo "if subdomain_host is not empty, you can set subdomain when type is http or https in frpc's configure file"
+        echo "when subdomain is test, the host used by routing is test.frps.com"
+        read -p "Please input subdomain_host (Default: ${def_subdomain_host}):" set_subdomain_host
+        [ -z "${set_subdomain_host}" ] && set_subdomain_host="${def_subdomain_host}"
+        echo "${program_name} subdomain_host: ${set_subdomain_host}"
+        echo ""
+        echo "##### Please select tcp_mux #####"
+        echo "1: enable (default)"
+        echo "2: disable"
+        echo "#####################################################"
+        read -p "Enter your choice (1, 2 or exit. default [1]): " str_tcp_mux
+        case "${str_tcp_mux}" in
+            1|[yY]|[yY][eE][sS]|[oO][nN]|[tT][rR][uU][eE]|[eE][nN][aA][bB][lL][eE])
+                set_tcp_mux="true"
+                ;;
+            0|2|[nN]|[nN][oO]|[oO][fF][fF]|[fF][aA][lL][sS][eE]|[dD][iI][sS][aA][bB][lL][eE])
+                set_tcp_mux="false"
+                ;;
+            [eE][xX][iI][tT])
+                exit 1
+                ;;
+            *)
+                set_tcp_mux="true"
+                ;;
+        esac
+        echo "tcp_mux: ${set_tcp_mux}"
+        echo ""
+        echo "============== Check your input =============="
+        echo -e "You Server IP      : ${COLOR_GREEN}${defIP}${COLOR_END}"
+        echo -e "Bind port          : ${COLOR_GREEN}${set_bind_port}${COLOR_END}"
+        echo -e "Bind udp port      : ${COLOR_GREEN}${set_bind_udp_port}${COLOR_END}"
+        echo -e "kcp Bind port      : ${COLOR_GREEN}${set_kcp_bind_port}${COLOR_END}"
+        echo -e "vhost http port    : ${COLOR_GREEN}${set_vhost_http_port}${COLOR_END}"
+        echo -e "vhost https port   : ${COLOR_GREEN}${set_vhost_https_port}${COLOR_END}"
+        echo -e "Dashboard port     : ${COLOR_GREEN}${set_dashboard_port}${COLOR_END}"
+        echo -e "Dashboard user     : ${COLOR_GREEN}${set_dashboard_user}${COLOR_END}"
+        echo -e "Dashboard password : ${COLOR_GREEN}${set_dashboard_pwd}${COLOR_END}"
+        echo -e "Log file           : ${COLOR_GREEN}${str_log_file_flag}${COLOR_END}"
+        echo -e "Log level          : ${COLOR_GREEN}${str_log_level}${COLOR_END}"
+        echo -e "Log max days       : ${COLOR_GREEN}${set_log_max_days}${COLOR_END}"
+        echo -e "token              : ${COLOR_GREEN}${set_token}${COLOR_END}"
+        echo -e "allow ports        : ${COLOR_GREEN}${set_allow_ports}${COLOR_END}"
+        echo -e "max pool count     : ${COLOR_GREEN}${set_max_pool_count}${COLOR_END}"
+        echo -e "authenticationt    : ${COLOR_GREEN}${set_authentication_timeout}${COLOR_END}"
+        echo -e "subdomain host     : ${COLOR_GREEN}${set_subdomain_host}${COLOR_END}"
+        echo -e "tcp_mux            : ${COLOR_GREEN}${set_tcp_mux}${COLOR_END}"
+        echo "=============================================="
+        echo ""
+        echo "Press any key to start...or Press Ctrl+c to cancel"
+
+# Config file
+touch ${str_program_dir}/${program_config_file}
+cat > ${str_program_dir}/${program_config_file}<<-EOF
+# [common] is integral section
+[common]
+# A literal address or host name for IPv6 must be enclosed
+# in square brackets, as in "[::1]:80", "[ipv6-host]:http" or "[ipv6-host%zone]:80"
+bind_addr = 0.0.0.0
+bind_port = ${set_bind_port}
+
+# udp port to help make udp hole to penetrate nat
+bind_udp_port = ${set_bind_udp_port}
+
+# udp port used for kcp protocol, it can be same with 'bind_port'
+# if not set, kcp is disabled in frps
+kcp_bind_port = ${set_kcp_bind_port}
+
+# specify which address proxy will listen for, default value is same with bind_addr
+# proxy_bind_addr = 127.0.0.1
+
+# if you want to support virtual host, you must set the http port for listening (optional)
+# Note: http port and https port can be same with bind_port
+vhost_http_port = ${set_vhost_http_port}
+vhost_https_port = ${set_vhost_https_port}
+
+# response header timeout(seconds) for vhost http server, default is 60s
+# vhost_http_timeout = 60
+
+# set dashboard_addr and dashboard_port to view dashboard of frps
+# dashboard_addr's default value is same with bind_addr
+# dashboard is available only if dashboard_port is set
+dashboard_addr = 0.0.0.0
+dashboard_port = ${set_dashboard_port}
+
+# dashboard user and passwd for basic auth protect, if not set, both default value is admin
+dashboard_user = ${set_dashboard_user}
+dashboard_pwd = ${set_dashboard_pwd}
+
+# dashboard assets directory(only for debug mode)
+# assets_dir = ./static
+# console or real logFile path like ./frps.log
+log_file = ${str_log_file}
+
+# trace, debug, info, warn, error
+log_level = ${str_log_level}
+
+log_max_days = ${set_log_max_days}
+
+# auth token
+token = ${set_token}
+
+# heartbeat configure, it's not recommended to modify the default value
+# the default value of heartbeat_timeout is 90
+# heartbeat_timeout = 90
+
+# only allow frpc to bind ports you list, if you set nothing, there won't be any limit
+allow_ports = ${set_allow_ports}
+
+# pool_count in each proxy will change to max_pool_count if they exceed the maximum value
+max_pool_count = ${set_max_pool_count}
+
+# max ports can be used for each client, default value is 0 means no limit
+max_ports_per_client = ${set_max_pool_count}
+
+# authentication_timeout means the timeout interval (seconds) when the frpc connects frps
+# if authentication_timeout is zero, the time is not verified, default is 900s
+authentication_timeout = ${set_authentication_timeout}
+
+# if subdomain_host is not empty, you can set subdomain when type is http or https in frpc's configure file
+# when subdomain is test, the host used by routing is test.frps.com
+subdomain_host = ${set_subdomain_host}
+
+# if tcp stream multiplexing is used, default is true
+tcp_mux = ${set_tcp_mux}
+EOF
+#install successfully
+    echo ""
+    echo "Congratulations, ${program_name} install completed!"
+    echo "=============================================="
+    echo -e "You Server IP      : ${COLOR_GREEN}${defIP}${COLOR_END}"
+    echo -e "Bind port          : ${COLOR_GREEN}${set_bind_port}${COLOR_END}"
+    echo -e "Bind udp port      : ${COLOR_GREEN}${set_bind_udp_port}${COLOR_END}"
+    echo -e "kcp Bind port      : ${COLOR_GREEN}${set_kcp_bind_port}${COLOR_END}"
+    echo -e "vhost http port    : ${COLOR_GREEN}${set_vhost_http_port}${COLOR_END}"
+    echo -e "vhost https port   : ${COLOR_GREEN}${set_vhost_https_port}${COLOR_END}"
+    echo -e "Dashboard port     : ${COLOR_GREEN}${set_dashboard_port}${COLOR_END}"
+    echo -e "Dashboard user     : ${COLOR_GREEN}${set_dashboard_user}${COLOR_END}"
+    echo -e "Dashboard password : ${COLOR_GREEN}${set_dashboard_pwd}${COLOR_END}"
+    echo -e "Log file           : ${COLOR_GREEN}${str_log_file_flag}${COLOR_END}"
+    echo -e "Log level          : ${COLOR_GREEN}${str_log_level}${COLOR_END}"
+    echo -e "Log max days       : ${COLOR_GREEN}${set_log_max_days}${COLOR_END}"
+    echo -e "token              : ${COLOR_GREEN}${set_token}${COLOR_END}"
+    echo -e "allow ports        : ${COLOR_GREEN}${set_allow_ports}${COLOR_END}"
+    echo -e "max pool count     : ${COLOR_GREEN}${set_max_pool_count}${COLOR_END}"
+    echo -e "authenticationt    : ${COLOR_GREEN}${set_authentication_timeout}${COLOR_END}"
+    echo -e "subdomain host     : ${COLOR_GREEN}${set_subdomain_host}${COLOR_END}"
+    echo -e "tcp_mux            : ${COLOR_GREEN}${set_tcp_mux}${COLOR_END}"
+    echo "=============================================="
+    echo -e "${program_name} Dashboard     : ${COLOR_GREEN}http://${defIP}:${set_dashboard_port}/${COLOR_END}"
+    echo -e "Dashboard user     : ${COLOR_GREEN}${set_dashboard_user}${COLOR_END}"
+    echo -e "Dashboard password : ${COLOR_GREEN}${set_dashboard_pwd}${COLOR_END}"
+    echo "=============================================="
+    echo ""
+    echo -e "${program_name} status manage : systemctl {${COLOR_GREEN}start|stop|restart|status${COLOR_END}} ${COLOR_PINKBACK_WHITEFONT}${program_name}${COLOR_END}"
+    echo -e "Example:"
+    echo -e "  start: systemctl ${COLOR_GREEN}start${COLOR_END} ${COLOR_PINK}${program_name}${COLOR_END}" 
+    echo -e "   stop: systemctl ${COLOR_GREEN}stop${COLOR_END} ${COLOR_PINK}${program_name}${COLOR_END}"
+    echo -e "restart: systemctl ${COLOR_GREEN}restart${COLOR_END} ${COLOR_PINK}${program_name}${COLOR_END}"
+    echo -e "version: ${COLOR_PINK}${program_name}${COLOR_END} ${COLOR_GREEN}-v${COLOR_END}"
+    echo -e "help: ${COLOR_PINK}${program_name}${COLOR_END} ${COLOR_GREEN}-h${COLOR_END}"
+systemctl enable frps
+systemctl start frps
+ln -s /usr/local/frps/bin/frps /bin/
+    exit 0
+%preun
+    MSG=`ps aux | grep frps | grep -v "grep"`
+    if [ -z "$MSG" ];then
+        killall frps 1>/dev/null 2>/dev/null
+    fi
+
+%postun
+rm -rf /bin/frps
+rm -rf /usr/local/frps
+
+%clean
+# rm -rf %{buildroot}
+
+%files
+/usr
+
+%changelog
+* Tue Aug 28 2018 yuanyl <542867428@qq.com> -0.21.0-1
+- Update to 0.21.0

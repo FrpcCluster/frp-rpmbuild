@@ -1,0 +1,76 @@
+Name:		frpc
+Version:	0.21.0
+Release:	1%{?dist}
+Summary:	Fast reverse proxy
+
+Group:		Applications/System
+License:	GPLv2
+URL:		https://github.com/fatedier/frp
+Packager:       YUANYL
+# Source0:	https://github.com/fatedier/frp/releases/download/v0.21.0/frp_0.21.0_linux_amd64.tar.gz
+# BuildRoot:      %_topdir/BUILDROOT
+Prefix:         /usr/local/frpc
+
+%description
+A fast reverse proxy to help you expose a local server behind a NAT or firewall to the internet.
+
+%prep
+# %setup -q
+
+%install
+# mkdir -p $RPM_BUILD_ROOT
+# rm -rf %{buildroot}
+cp -r %_buildrootdir/Centos6_frpc_x86_64/usr %{buildroot} 
+cp -r %_buildrootdir/Centos6_frpc_x86_64/etc %{buildroot}
+
+%post
+
+program_name="frpc"
+str_program_dir="/usr/local/${program_name}"
+program_config_file="etc/frpc.ini"
+
+fun_set_text_color(){
+    COLOR_RED='\E[1;31m'
+    COLOR_GREEN='\E[1;32m'
+    COLOR_YELOW='\E[1;33m'
+    COLOR_BLUE='\E[1;34m'
+    COLOR_PINK='\E[1;35m'
+    COLOR_PINKBACK_WHITEFONT='\033[45;37m'
+    COLOR_GREEN_LIGHTNING='\033[32m \033[05m'
+    COLOR_END='\E[0m'
+}
+
+        fun_set_text_color
+    echo -e "Example:"
+    echo -e "  start: /etc/init.d/${COLOR_PINK}${program_name}${COLOR_END} ${COLOR_GREEN}start${COLOR_END}" 
+    echo -e "   stop: /etc/init.d/${COLOR_PINK}${program_name}${COLOR_END} ${COLOR_GREEN}stop${COLOR_END}"
+    echo -e "restart: /etc/init.d/${COLOR_PINK}${program_name}${COLOR_END} ${COLOR_GREEN}restart${COLOR_END}"
+    echo -e "version: ${COLOR_PINK}${program_name}${COLOR_END} ${COLOR_GREEN}-v${COLOR_END}"
+    echo -e "help: ${COLOR_PINK}${program_name}${COLOR_END} ${COLOR_GREEN}-h${COLOR_END}"
+
+ln -s /usr/local/frpc/bin/frpc /bin/
+chkconfig --add frpc
+
+%preun
+    MSG=`ps aux | grep frpc | grep -v "grep"`
+    if [ -z "$MSG" ];then
+        killall frpc 1>/dev/null 2>/dev/null
+    fi
+
+%postun
+rm -rf /bin/frpc
+rm -rf /usr/local/frpc
+
+%clean
+# rm -rf %{buildroot}
+
+%files
+/usr
+/etc
+
+%changelog
+* Mon Aug 27 2018 yuanyl <542867428@qq.com> -0.21.0-1
+- Update to 0.21.0
+
+* Fri Jul 6 2018 yuanyl <542867428@qq.com> -0.20.0-1
+- Update to 0.20.0
